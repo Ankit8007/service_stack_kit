@@ -1,4 +1,4 @@
-## 1.0.0+1
+## 1.0.0+2
 
 - Initial release of `service_stack_kit`.
 - Added modules for permissions, Firebase setup, Socket.IO, storage, geo services, and responsive UI helpers.
