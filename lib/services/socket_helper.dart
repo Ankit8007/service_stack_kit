@@ -1,5 +1,13 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
+typedef SocketHandler =
+    void Function({
+      void Function()? onConnect,
+      void Function()? onDisconnect,
+      void Function(dynamic error)? onError,
+      Function(int)? onReconnectAttempt,
+    });
+
 /// SocketService: Singleton-per-URL socket handler.
 class SocketService {
   static final Map<String, SocketService> _instances = {};
@@ -7,41 +15,43 @@ class SocketService {
   final String url;
   final IO.Socket _socket;
 
-  /// Optional callbacks
-  final void Function()? onConnectCallback;
-  final void Function(dynamic error)? onErrorCallback;
-  final void Function(dynamic reason)? onDisconnectCallback;
-  final void Function(int attempt)? onReconnectAttemptCallback;
+  // /// Optional callbacks
+  //  void Function()? onConnectCallback;
+  //  void Function(dynamic error)? onErrorCallback;
+  //  void Function(dynamic reason)? onDisconnectCallback;
+  //  void Function(int attempt)? onReconnectAttemptCallback;
+  /// Stored callbacks
+  void Function()? _onConnectCallback;
+  void Function(dynamic error)? _onErrorCallback;
+  void Function(dynamic reason)? _onDisconnectCallback;
+  void Function(int attempt)? _onReconnectAttemptCallback;
 
   /// Private constructor
   SocketService._internal(
-      this.url, {
-        Map<String, dynamic>? queryParams,
-        this.onConnectCallback,
-        this.onErrorCallback,
-        this.onDisconnectCallback,
-        this.onReconnectAttemptCallback,
-      }) : _socket = IO.io(
-    url,
-    IO.OptionBuilder()
-        .setTransports(['websocket'])
-        .setQuery(queryParams ?? {})
-        .enableAutoConnect()
-        .enableReconnection()
-        .build(),
-  ) {
+    this.url, {
+    Map<String, dynamic>? queryParams,
+    String? authToken,
+  }) : _socket = IO.io(
+         url,
+         IO.OptionBuilder()
+             .setTransports(['websocket'])
+             .enableAutoConnect()
+             .enableReconnection()
+             .setQuery({
+               if (queryParams != null) ...queryParams,
+               if (authToken != null) 'authToken': authToken,
+             })
+             .build(),
+       ) {
     _initializeDefaultListeners();
   }
 
   /// Factory: Return existing or create new instance per URL
   factory SocketService(
-      String url, {
-        Map<String, dynamic>? queryParams,
-        void Function()? onConnect,
-        void Function(dynamic error)? onError,
-        void Function(dynamic reason)? onDisconnect,
-        void Function(int attempt)? onReconnectAttempt,
-      }) {
+    String url, {
+    Map<String, dynamic>? queryParams,
+    String? authToken,
+  }) {
     if (_instances.containsKey(url)) {
       return _instances[url]!;
     }
@@ -49,34 +59,54 @@ class SocketService {
     final instance = SocketService._internal(
       url,
       queryParams: queryParams,
-      onConnectCallback: onConnect,
-      onErrorCallback: onError,
-      onDisconnectCallback: onDisconnect,
-      onReconnectAttemptCallback: onReconnectAttempt,
+      authToken: authToken,
     );
 
     _instances[url] = instance;
     return instance;
   }
 
+  /// Register event handlers
+  void handle({
+    void Function()? onConnect,
+    void Function(dynamic error)? onError,
+    void Function(dynamic reason)? onDisconnect,
+    void Function(int attempt)? onReconnectAttempt,
+  }) {
+    _onConnectCallback = onConnect;
+    _onErrorCallback = onError;
+    _onDisconnectCallback = onDisconnect;
+    _onReconnectAttemptCallback = onReconnectAttempt;
+  }
+
   /// Setup default socket listeners
   void _initializeDefaultListeners() {
-    _socket.onConnect((_) {
-      if (onConnectCallback != null) onConnectCallback!();
-    });
-
-    _socket.onDisconnect((data) {
-      if (onDisconnectCallback != null) onDisconnectCallback!(data);
-    });
-
-    _socket.onError((error) {
-      if (onErrorCallback != null) onErrorCallback!(error);
-    });
-
-    _socket.onReconnectAttempt((attempt) {
-      if (onReconnectAttemptCallback != null) onReconnectAttemptCallback!(attempt);
-    });
+    _socket.onConnect((_) => _onConnectCallback?.call());
+    _socket.onDisconnect((data) => _onDisconnectCallback?.call(data));
+    _socket.onError((error) => _onErrorCallback?.call(error));
+    _socket.onReconnectAttempt(
+      (attempt) => _onReconnectAttemptCallback?.call(attempt),
+    );
   }
+
+  // void _initializeDefaultListeners() {
+  //   _socket.onConnect((_) {
+  //     if (onConnectCallback != null) onConnectCallback!();
+  //   });
+  //
+  //   _socket.onDisconnect((data) {
+  //     if (onDisconnectCallback != null) onDisconnectCallback!(data);
+  //   });
+  //
+  //   _socket.onError((error) {
+  //     if (onErrorCallback != null) onErrorCallback!(error);
+  //   });
+  //
+  //   _socket.onReconnectAttempt((attempt) {
+  //     if (onReconnectAttemptCallback != null)
+  //       onReconnectAttemptCallback!(attempt);
+  //   });
+  // }
 
   /// Connect the socket
   void connect() {
@@ -101,10 +131,12 @@ class SocketService {
   void emit(String event, dynamic data) => _socket.emit(event, data);
 
   /// Listen to an event
-  void on(String event, Function(dynamic) callback) => _socket.on(event, callback);
+  void on(String event, Function(dynamic) callback) =>
+      hasListeners(event) ? null : _socket.on(event, callback);
 
   /// Listen to an event only once
-  void once(String event, Function(dynamic) callback) => _socket.once(event, callback);
+  void once(String event, Function(dynamic) callback) =>
+      _socket.once(event, callback);
 
   /// Remove a listener
   void off(String event) => _socket.off(event);
@@ -132,7 +164,8 @@ class SocketService {
   IO.Socket get raw => _socket;
 
   /// Get all existing instances (for debugging or cleanup)
-  static Map<String, SocketService> get allInstances => Map.unmodifiable(_instances);
+  static Map<String, SocketService> get allInstances =>
+      Map.unmodifiable(_instances);
 
   /// Dispose all sockets
   static void disposeAll() {
