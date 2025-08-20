@@ -25,6 +25,7 @@ class SocketService {
   void Function(dynamic error)? _onErrorCallback;
   void Function(dynamic reason)? _onDisconnectCallback;
   void Function(int attempt)? _onReconnectAttemptCallback;
+  void Function(dynamic)? _log;
 
   /// Private constructor
   SocketService._internal(
@@ -73,11 +74,12 @@ class SocketService {
     void Function(dynamic error)? onError,
     void Function(dynamic reason)? onDisconnect,
     void Function(int attempt)? onReconnectAttempt,
+    void Function(dynamic)? log
   }) {
     _onConnectCallback = onConnect;
     _onErrorCallback = onError;
     _onDisconnectCallback = onDisconnect;
-    _onReconnectAttemptCallback = onReconnectAttempt;
+    _onReconnectAttemptCallback = log;
   }
 
   /// Setup default socket listeners
@@ -129,21 +131,45 @@ class SocketService {
   }
 
   /// Emit an event with data
-  void emit(String event, dynamic data) => _socket.emit(event, data);
+  void emit(String event, dynamic data) => {_socket.emit(event, data),_log?.call({
+    'Type': 'SOCKET',
+    'Event': event,
+    'Data': data
+  })};
 
   /// Listen to an event
   void on(String event, Function(dynamic) callback) =>
-      hasListeners(event) ? null : _socket.on(event, callback);
+      hasListeners(event) ? null : _socket.on(event, (data){
+        callback(data);
+        _log?.call({
+          'Type': 'SOCKET',
+          'Listener': event,
+          'Data': data
+        });
+      });
 
   /// Listen to an event only once
   void once(String event, Function(dynamic) callback) =>
-      _socket.once(event, callback);
+      _socket.once(event, (data){
+        callback(data);
+        _log?.call({
+          'Type': 'SOCKET',
+          'ONCEListener': event,
+          'Data': data
+        });
+      });
 
   /// Remove a listener
-  void off(String event) => _socket.off(event);
+  void off(String event) => {_socket.off(event),_log?.call({
+    'Type': 'SOCKET',
+    'OFFEvent': event,
+  })};
 
   /// Remove all listeners for the socket
-  void offAll() => _socket.clearListeners();
+  void offAll() => {_socket.clearListeners(),_log?.call({
+    'Type': 'SOCKET',
+    'OFFAll': '',
+  })};
 
   /// Reconnect manually
   void reconnect() {
