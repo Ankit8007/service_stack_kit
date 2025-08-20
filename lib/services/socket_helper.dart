@@ -39,8 +39,9 @@ class SocketService {
              .enableReconnection()
              .setQuery({
                if (queryParams != null) ...queryParams,
-               if (authToken != null) 'authToken': authToken,
-             })
+             }).setExtraHeaders({
+           if (authToken != null) 'Authorization': authToken,
+         })
              .build(),
        ) {
     _initializeDefaultListeners();
