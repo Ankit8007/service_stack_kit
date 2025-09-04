@@ -79,7 +79,8 @@ class SocketService {
     _onConnectCallback = onConnect;
     _onErrorCallback = onError;
     _onDisconnectCallback = onDisconnect;
-    _onReconnectAttemptCallback = log;
+    _onReconnectAttemptCallback = onReconnectAttempt;
+    _log = log;
   }
 
   /// Setup default socket listeners
